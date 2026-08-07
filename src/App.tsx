@@ -22,6 +22,7 @@ export default function App() {
   const [mode, setMode] = useState<'live' | 'demo'>('live')
   const [recordRoute, setRecordRoute] = useState(false)
   const [settingsMode, setSettingsMode] = useState(false)
+  const [placeAlarmsOnOpen, setPlaceAlarmsOnOpen] = useState(false)
   const [storageNote, setStorageNote] = useState('')
 
   useEffect(() => {
@@ -73,11 +74,13 @@ export default function App() {
     setMode(nextMode)
     setRecordRoute(Boolean(options?.recordRoute))
     setSettingsMode(false)
+    setPlaceAlarmsOnOpen(false)
     setView('tracking')
   }
 
-  function handleOpenSettings() {
+  function handleOpenSettings(options?: { placeAlarms?: boolean }) {
     setRecordRoute(false)
+    setPlaceAlarmsOnOpen(Boolean(options?.placeAlarms))
     setSettingsMode(true)
     setView('setup')
   }
@@ -86,6 +89,7 @@ export default function App() {
     await persist(next)
     setSettingsMode(false)
     setRecordRoute(false)
+    setPlaceAlarmsOnOpen(false)
     setView('tracking')
   }
 
@@ -93,11 +97,16 @@ export default function App() {
     await persist(next)
   }
 
+  function handleRecordComplete() {
+    setRecordRoute(false)
+  }
+
   async function handleReset() {
     await clearSettingsAsync()
     setSettings(null)
     setRecordRoute(false)
     setSettingsMode(false)
+    setPlaceAlarmsOnOpen(false)
     setStorageNote('Nothing saved on this phone yet.')
     setView('setup')
   }
@@ -124,6 +133,7 @@ export default function App() {
         <SetupScreen
           initial={settings}
           settingsMode={settingsMode}
+          placeAlarmsOnOpen={placeAlarmsOnOpen}
           storageNote={storageNote}
           onStart={handleStart}
           onGoHome={settingsMode ? handleGoHome : undefined}
@@ -135,6 +145,7 @@ export default function App() {
           recordRoute={recordRoute}
           onChangeSettings={handleOpenSettings}
           onSettingsUpdate={handleSettingsUpdate}
+          onRecordComplete={handleRecordComplete}
         />
       ) : (
         <SetupScreen

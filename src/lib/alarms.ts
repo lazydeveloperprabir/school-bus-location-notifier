@@ -149,7 +149,10 @@ export function playApproachingUpdate(options: {
 }
 
 /** Softer chime + spoken arrival message (once) */
-export function playArrivedAlarm(): void {
+export function playArrivedAlarm(options?: {
+  /** When a route was just recorded, mention that it is saved for next time */
+  recordingTrip?: 'pickup' | 'drop'
+}): void {
   if (state.arrivedPlayed) return
   state.arrivedPlayed = true
 
@@ -164,8 +167,18 @@ export function playArrivedAlarm(): void {
     beep(freq, 350, now + i * 0.22, 'sine', 0.28)
   })
 
+  const tripLabel =
+    options?.recordingTrip === 'drop'
+      ? 'drop'
+      : options?.recordingTrip === 'pickup'
+        ? 'pickup'
+        : null
+  const recordingNote = tripLabel
+    ? ` Recording complete. Your ${tripLabel} route is saved and will be available next time. Open Settings to select alarm points along the route.`
+    : ''
+
   window.setTimeout(() => {
-    speak('The school bus has arrived at your location.')
+    speak(`The school bus has arrived at your location.${recordingNote}`)
   }, 900)
 }
 

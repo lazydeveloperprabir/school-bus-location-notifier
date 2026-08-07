@@ -417,6 +417,28 @@ input {
   font-weight: 600;
 }
 
+.banner-success p {
+  margin: 0 0 0.65rem;
+  font-weight: 600;
+}
+
+.banner-cta {
+  display: inline-flex;
+}
+
+.track-trip-toggle {
+  margin: 0 0 0.35rem;
+}
+
+.track-trip-toggle .chip {
+  background: rgba(255, 253, 248, 0.92);
+}
+
+.track-trip-toggle .chip-active {
+  background: var(--brand);
+  color: #fffdf8;
+}
+
 .map-shell {
   overflow: hidden;
   border-radius: 14px;

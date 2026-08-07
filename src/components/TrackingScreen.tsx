@@ -17,7 +17,13 @@ import {
   simplifyRoute,
 } from '../lib/route'
 import { saveSettings, saveSettingsAsync } from '../lib/storage'
-import type { AlertKind, AppSettings, LatLng, TrackingStats } from '../types'
+import type {
+  AlertKind,
+  AppSettings,
+  LatLng,
+  TrackingStats,
+  TripKind,
+} from '../types'
 import {
   DEFAULT_WAYPOINT_RADIUS_M,
   formatAlertDistance,
@@ -30,8 +36,9 @@ type TrackingScreenProps = {
   settings: AppSettings
   mode: 'live' | 'demo'
   recordRoute?: boolean
-  onChangeSettings: () => void
+  onChangeSettings: (options?: { placeAlarms?: boolean }) => void
   onSettingsUpdate: (settings: AppSettings) => void
+  onRecordComplete?: () => void
 }
 
 function evaluateAlert(
@@ -56,6 +63,7 @@ export function TrackingScreen({
   recordRoute = false,
   onChangeSettings,
   onSettingsUpdate,
+  onRecordComplete,
 }: TrackingScreenProps) {
   const [stats, setStats] = useState<TrackingStats>({
     bus: null,
@@ -64,7 +72,7 @@ export function TrackingScreen({
     speedKmh: null,
     alert: null,
     status: recordRoute
-      ? `Recording ${settings.activeTrip} route…`
+      ? `Recording ${settings.activeTrip} route — stops automatically on arrival…`
       : mode === 'demo'
         ? 'Starting demo…'
         : 'Connecting to GPS…',
@@ -74,6 +82,7 @@ export function TrackingScreen({
     activeWaypointLabel: null,
   })
   const [recording, setRecording] = useState(recordRoute)
+  const [recordingJustFinished, setRecordingJustFinished] = useState(false)
   const [trailVersion, setTrailVersion] = useState(0)
   const [mapViewMode, setMapViewMode] = useState<MapViewMode>('follow')
   const demoBusRef = useRef<LatLng | null>(null)
@@ -84,9 +93,16 @@ export function TrackingScreen({
   const trailRef = useRef<LatLng[]>(
     recording ? [...getActiveRoute(settings)] : [],
   )
+  const recordingRef = useRef(recording)
+  recordingRef.current = recording
+  const recordingSavedRef = useRef(false)
   const triggeredWaypoints = useRef<Set<string>>(new Set())
   const settingsRef = useRef(settings)
   settingsRef.current = settings
+  const onRecordCompleteRef = useRef(onRecordComplete)
+  onRecordCompleteRef.current = onRecordComplete
+  const onSettingsUpdateRef = useRef(onSettingsUpdate)
+  onSettingsUpdateRef.current = onSettingsUpdate
 
   const activeRoute = getActiveRoute(settings)
   const tripAlarms = useMemo(
@@ -148,6 +164,46 @@ export function TrackingScreen({
       }, intervalMs)
     }
 
+    function finishRecordingOnArrival(trip: TripKind): {
+      saved: boolean
+      pointCount: number
+    } {
+      if (recordingSavedRef.current) {
+        return { saved: false, pointCount: trailRef.current.length }
+      }
+      recordingSavedRef.current = true
+
+      const simplified = simplifyRoute(trailRef.current)
+      if (simplified.length < 2) {
+        setRecording(false)
+        onRecordCompleteRef.current?.()
+        setStats((prev) => ({
+          ...prev,
+          status:
+            'Recording stopped on arrival, but more movement is needed to save a route. Try recording again.',
+        }))
+        return { saved: false, pointCount: simplified.length }
+      }
+
+      const current = settingsRef.current
+      const next: AppSettings = {
+        ...current,
+        lastUpdated: Date.now(),
+        pickupRoute:
+          trip === 'pickup' ? simplified : current.pickupRoute,
+        dropRoute: trip === 'drop' ? simplified : current.dropRoute,
+      }
+      saveSettings(next)
+      void saveSettingsAsync(next)
+      onSettingsUpdateRef.current(next)
+      setRecording(false)
+      setRecordingJustFinished(true)
+      trailRef.current = simplified
+      setTrailVersion((v) => v + 1)
+      onRecordCompleteRef.current?.()
+      return { saved: true, pointCount: simplified.length }
+    }
+
     async function tick() {
       if (cancelled) return
 
@@ -173,8 +229,8 @@ export function TrackingScreen({
         await applyBusPosition(
           demoBusRef.current,
           'demo',
-          recording
-            ? `Recording ${settings.activeTrip} route…`
+          recordingRef.current
+            ? `Recording ${settings.activeTrip} route — auto-saves on arrival…`
             : 'Demo bus approaching home',
         )
       } else {
@@ -184,8 +240,8 @@ export function TrackingScreen({
           await applyBusPosition(
             result.location,
             'link',
-            recording
-              ? `Recording ${settings.activeTrip} route…`
+            recordingRef.current
+              ? `Recording ${settings.activeTrip} route — auto-saves on arrival…`
               : (result.note ?? 'Live GPS update'),
           )
         } else {
@@ -219,7 +275,7 @@ export function TrackingScreen({
       lastBusRef.current = bus
       lastTimeRef.current = now
 
-      if (recording) {
+      if (recordingRef.current) {
         const next = appendRoutePoint(trailRef.current, bus)
         if (next !== trailRef.current) {
           trailRef.current = next
@@ -269,13 +325,27 @@ export function TrackingScreen({
         approachDistanceRef.current = null
       }
 
+      const wasRecording = recordingRef.current
+      let recordingResult: { saved: boolean; pointCount: number } | null =
+        null
+      if (alert === 'arrived' && wasRecording) {
+        recordingResult = finishRecordingOnArrival(settings.activeTrip)
+      }
+
       const routeNote =
         route.source === 'road'
           ? ' · road distance'
           : ' · straight-line fallback'
-      const recordNote = recording
+      const recordNote = recordingRef.current
         ? ` · ${trailRef.current.length} route points`
-        : ''
+        : recordingResult?.saved
+          ? ` · ${settings.activeTrip} route saved (${recordingResult.pointCount} pts)`
+          : ''
+
+      const completionStatus =
+        recordingResult?.saved
+          ? `Recording complete — ${settings.activeTrip} route saved (${recordingResult.pointCount} points). Available next time; select alarm points in Settings.`
+          : `${status}${routeNote}${recordNote}`
 
       setStats({
         bus,
@@ -283,7 +353,7 @@ export function TrackingScreen({
         etaMinutes: route.etaMinutes,
         speedKmh: speed,
         alert: waypointLabel ? 'waypoint' : alert,
-        status: `${status}${routeNote}${recordNote}`,
+        status: completionStatus,
         source,
         routePath: route.path,
         distanceSource: route.source,
@@ -292,7 +362,11 @@ export function TrackingScreen({
 
       if (alert === 'arrived') {
         stopApproachAnnouncements()
-        playArrivedAlarm()
+        playArrivedAlarm(
+          recordingResult?.saved
+            ? { recordingTrip: settings.activeTrip }
+            : undefined,
+        )
         return
       }
 
@@ -320,36 +394,20 @@ export function TrackingScreen({
       if (timer) window.clearTimeout(timer)
       stopApproachAnnouncements()
     }
-  }, [settings, mode, recording])
+  }, [settings, mode])
 
-  function stopAndSaveRoute() {
-    const simplified = simplifyRoute(trailRef.current)
-    if (simplified.length < 2) {
-      setStats((prev) => ({
-        ...prev,
-        status: 'Need more movement before saving the route.',
-      }))
-      return
-    }
+  function selectTrip(trip: TripKind) {
+    if (recording || trip === settings.activeTrip) return
     const next: AppSettings = {
       ...settingsRef.current,
+      activeTrip: trip,
       lastUpdated: Date.now(),
-      pickupRoute:
-        settings.activeTrip === 'pickup'
-          ? simplified
-          : settings.pickupRoute,
-      dropRoute:
-        settings.activeTrip === 'drop' ? simplified : settings.dropRoute,
     }
     saveSettings(next)
     void saveSettingsAsync(next)
     onSettingsUpdate(next)
-    setRecording(false)
-    trailRef.current = simplified
-    setStats((prev) => ({
-      ...prev,
-      status: `Saved ${settings.activeTrip} route (${simplified.length} points). Place alarm points in Settings.`,
-    }))
+    triggeredWaypoints.current = new Set()
+    setRecordingJustFinished(false)
   }
 
   const alertClass =
@@ -359,6 +417,8 @@ export function TrackingScreen({
         ? 'alert-approach'
         : ''
 
+  const tripLabel = settings.activeTrip === 'drop' ? 'Drop' : 'Pickup'
+
   return (
     <div className={`screen tracking-screen ${alertClass}`}>
       <header className="track-bar">
@@ -366,7 +426,9 @@ export function TrackingScreen({
           <p className="brand-sm">School Bus Notifier</p>
           <h1>
             {stats.alert === 'arrived'
-              ? 'Bus has arrived'
+              ? recordingJustFinished
+                ? 'Recording complete'
+                : 'Bus has arrived'
               : stats.alert === 'approaching'
                 ? 'Bus approaching'
                 : stats.alert === 'waypoint'
@@ -379,24 +441,36 @@ export function TrackingScreen({
         <button
           type="button"
           className="btn btn-ghost"
-          onClick={onChangeSettings}
+          onClick={() => onChangeSettings()}
         >
           Settings
         </button>
       </header>
 
       {recording && (
-        <button
-          type="button"
-          className="banner banner-action"
-          onClick={stopAndSaveRoute}
-        >
-          Stop &amp; save {settings.activeTrip} route (
-          {trailRef.current.length} points)
-        </button>
+        <div className="banner banner-info" role="status">
+          Recording {tripLabel.toLowerCase()} route… Stops automatically when
+          the bus arrives at home.
+        </div>
       )}
 
-      {stats.alert === 'arrived' && (
+      {recordingJustFinished && (
+        <div className="banner banner-success" role="status">
+          <p>
+            Recording complete. Your {tripLabel.toLowerCase()} route is saved
+            and available next time.
+          </p>
+          <button
+            type="button"
+            className="btn btn-primary banner-cta"
+            onClick={() => onChangeSettings({ placeAlarms: true })}
+          >
+            Select alarm points on route
+          </button>
+        </div>
+      )}
+
+      {stats.alert === 'arrived' && !recordingJustFinished && (
         <div className="banner banner-success" role="status">
           The school bus has arrived at your location.
         </div>
@@ -412,13 +486,38 @@ export function TrackingScreen({
           Passed alarm point on the {settings.activeTrip} route.
         </div>
       )}
-      {stats.alert === null && stats.bus && !recording && (
+      {stats.alert === null && stats.bus && !recording && !recordingJustFinished && (
         <div className="banner banner-info" role="status">
           Tracking {settings.activeTrip}. Continuous alerts start within{' '}
           {formatAlertDistance(settings.approachDistanceM)}.
           {tripAlarms.length
             ? ` ${tripAlarms.length} route alarm point(s) armed.`
             : ''}
+        </div>
+      )}
+
+      {!recording && (
+        <div className="trip-toggle track-trip-toggle" role="group" aria-label="Trip">
+          <button
+            type="button"
+            className={`chip ${settings.activeTrip === 'pickup' ? 'chip-active' : ''}`}
+            onClick={() => selectTrip('pickup')}
+          >
+            Pickup
+            {settings.pickupRoute.length
+              ? ` (${settings.pickupRoute.length})`
+              : ''}
+          </button>
+          <button
+            type="button"
+            className={`chip ${settings.activeTrip === 'drop' ? 'chip-active' : ''}`}
+            onClick={() => selectTrip('drop')}
+          >
+            Drop
+            {settings.dropRoute.length
+              ? ` (${settings.dropRoute.length})`
+              : ''}
+          </button>
         </div>
       )}
 
@@ -473,9 +572,7 @@ export function TrackingScreen({
         </div>
         <div className="stat">
           <span className="stat-label">Trip</span>
-          <span className="stat-value">
-            {settings.activeTrip === 'drop' ? 'Drop' : 'Pickup'}
-          </span>
+          <span className="stat-value">{tripLabel}</span>
         </div>
         <div className="stat">
           <span className="stat-label">Mode</span>

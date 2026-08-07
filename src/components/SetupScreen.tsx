@@ -20,6 +20,8 @@ type SetupScreenProps = {
   initial?: AppSettings | null
   /** Opened from tracking → Settings (edit params, then Home) */
   settingsMode?: boolean
+  /** Open directly into alarm-point selection on the active route */
+  placeAlarmsOnOpen?: boolean
   /** Status line about on-device saved data */
   storageNote?: string
   onStart: (
@@ -36,6 +38,7 @@ const DEFAULT_CENTER: LatLng = { lat: 12.9716, lng: 77.5946 }
 export function SetupScreen({
   initial,
   settingsMode = false,
+  placeAlarmsOnOpen = false,
   storageNote,
   onStart,
   onGoHome,
@@ -111,6 +114,25 @@ export function SetupScreen({
     )
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  useEffect(() => {
+    if (!placeAlarmsOnOpen) return
+    const route =
+      (initial?.activeTrip === 'drop'
+        ? initial?.dropRoute
+        : initial?.pickupRoute) ?? []
+    if (route.length < 2) {
+      setHint(
+        'Record a pickup or drop route first, then select alarm points on it.',
+      )
+      return
+    }
+    setPlacingAlarms(true)
+    setHint(
+      `Tap the ${(initial?.activeTrip ?? activeTrip) === 'drop' ? 'drop' : 'pickup'} route to select alarm points. They will alert you next time.`,
+    )
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [placeAlarmsOnOpen])
 
   function useCurrentLocation() {
     setError(null)
@@ -246,7 +268,7 @@ export function SetupScreen({
         label: `Stop ${tripAlarms.length + 1}`,
       }
       setAlarmPoints((prev) => [...prev, point])
-      setHint(`Alarm point added on ${activeTrip} route.`)
+      setHint(`Alarm point selected on ${activeTrip} route.`)
       setError(null)
       return
     }
@@ -320,7 +342,7 @@ export function SetupScreen({
         </div>
         <p className="panel-hint">
           {placingAlarms
-            ? 'Alarm mode: tap the route line to add alarm points.'
+            ? `Select mode: tap the ${activeTrip} route line to choose alarm points.`
             : 'Tap the map to drop your home pin'}
           {homeSet
             ? ` · ${home.lat.toFixed(5)}, ${home.lng.toFixed(5)}`
@@ -374,8 +396,9 @@ export function SetupScreen({
           <h2>3. Pickup / drop route</h2>
         </div>
         <p className="panel-hint">
-          Record the bus path once (includes road before and after your home).
-          Then tap the route to set multiple alarm points.
+          Choose Pickup or Drop, then start recording. Recording stops
+          automatically when the bus arrives. After that, select alarm points
+          on the saved route for next time.
         </p>
         <div className="trip-toggle">
           <button
@@ -413,7 +436,7 @@ export function SetupScreen({
             onClick={() => setPlacingAlarms((v) => !v)}
             disabled={activeRoute.length < 2}
           >
-            {placingAlarms ? 'Done placing' : 'Place alarm points'}
+            {placingAlarms ? 'Done selecting' : 'Select alarm points'}
           </button>
           <button
             type="button"
@@ -424,6 +447,12 @@ export function SetupScreen({
             Clear route
           </button>
         </div>
+        {activeRoute.length < 2 && (
+          <p className="panel-hint">
+            No {activeTrip} route yet. Record one ride — it auto-saves on
+            arrival, then you can select points on that path.
+          </p>
+        )}
         {tripAlarms.length > 0 && (
           <ul className="alarm-list">
             {tripAlarms.map((point, index) => (
