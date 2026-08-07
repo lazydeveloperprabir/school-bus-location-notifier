@@ -428,10 +428,41 @@ input {
   height: 240px;
 }
 
-.map-tracking {
-  height: min(48vh, 420px);
-  border-radius: var(--radius);
-  box-shadow: var(--shadow);
+.map-with-controls {
+  position: relative;
+}
+
+.map-view-toggle {
+  position: absolute;
+  left: 50%;
+  bottom: 0.75rem;
+  transform: translateX(-50%);
+  z-index: 500;
+  display: flex;
+  gap: 0.25rem;
+  padding: 0.25rem;
+  border-radius: 999px;
+  background: rgba(255, 252, 247, 0.94);
+  border: 1px solid var(--line);
+  box-shadow: 0 8px 24px rgba(11, 61, 46, 0.18);
+}
+
+.map-toggle-btn {
+  appearance: none;
+  border: none;
+  background: transparent;
+  color: var(--brand);
+  font-weight: 600;
+  font-size: 0.78rem;
+  padding: 0.45rem 0.75rem;
+  border-radius: 999px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.map-toggle-btn.active {
+  background: var(--brand);
+  color: #fffdf8;
 }
 
 .map-canvas {

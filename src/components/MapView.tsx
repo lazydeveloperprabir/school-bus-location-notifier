@@ -16,6 +16,8 @@ import {
 } from '../types'
 import 'leaflet/dist/leaflet.css'
 
+export type MapViewMode = 'follow' | 'complete'
+
 const homeIcon = L.divIcon({
   className: 'map-pin map-pin-home',
   html: `<span aria-hidden="true"></span>`,
@@ -39,45 +41,117 @@ function alarmIcon(label: string) {
   })
 }
 
+function nearestIndex(
+  path: Array<[number, number]>,
+  point: LatLng,
+): number {
+  let best = 0
+  let bestDist = Infinity
+  for (let i = 0; i < path.length; i++) {
+    const [lat, lng] = path[i]
+    const d = (lat - point.lat) ** 2 + (lng - point.lng) ** 2
+    if (d < bestDist) {
+      bestDist = d
+      best = i
+    }
+  }
+  return best
+}
+
+/** Slice of saved route around the bus for follow zoom */
+function localRouteWindow(
+  path: Array<[number, number]>,
+  bus: LatLng,
+  windowSize = 24,
+): Array<[number, number]> {
+  if (path.length <= 2) return path
+  const idx = nearestIndex(path, bus)
+  const start = Math.max(0, idx - Math.floor(windowSize / 3))
+  const end = Math.min(path.length, idx + Math.ceil((windowSize * 2) / 3))
+  return path.slice(start, end)
+}
+
 function FitBounds({
   home,
   bus,
   routePath,
   savedRoutePath,
+  viewMode,
 }: {
   home: LatLng
   bus: LatLng | null
   routePath: Array<[number, number]> | null
   savedRoutePath: Array<[number, number]> | null
+  viewMode: MapViewMode
 }) {
   const map = useMap()
-  const primary = savedRoutePath?.length
+  const fullPath = savedRoutePath?.length
     ? savedRoutePath
     : routePath?.length
       ? routePath
       : null
-  const pathKey = primary?.length
-    ? `${primary[0]?.join(',')}-${primary[primary.length - 1]?.join(',')}-${primary.length}`
+
+  const busKey = bus
+    ? `${bus.lat.toFixed(4)},${bus.lng.toFixed(4)}`
     : ''
-  const key = `${home.lat},${home.lng},${bus?.lat ?? ''},${bus?.lng ?? ''},${pathKey}`
+  const pathKey = fullPath?.length
+    ? `${fullPath[0]?.join(',')}-${fullPath[fullPath.length - 1]?.join(',')}-${fullPath.length}`
+    : ''
+  const key = `${viewMode}|${home.lat},${home.lng}|${busKey}|${pathKey}|${routePath?.length ?? 0}`
 
   useEffect(() => {
-    if (primary && primary.length > 1) {
-      const bounds = L.latLngBounds(primary.map(([lat, lng]) => [lat, lng]))
-      bounds.extend([home.lat, home.lng])
-      if (bus) bounds.extend([bus.lat, bus.lng])
-      map.fitBounds(bounds.pad(0.2), { animate: true })
-    } else if (bus) {
+    if (viewMode === 'complete') {
+      if (fullPath && fullPath.length > 1) {
+        const bounds = L.latLngBounds(fullPath.map(([lat, lng]) => [lat, lng]))
+        bounds.extend([home.lat, home.lng])
+        if (bus) bounds.extend([bus.lat, bus.lng])
+        map.fitBounds(bounds.pad(0.18), { animate: true, maxZoom: 16 })
+      } else if (bus) {
+        const bounds = L.latLngBounds(
+          [home.lat, home.lng],
+          [bus.lat, bus.lng],
+        )
+        map.fitBounds(bounds.pad(0.3), { animate: true, maxZoom: 16 })
+      } else {
+        map.setView([home.lat, home.lng], 14, { animate: true })
+      }
+      return
+    }
+
+    // Follow / auto-zoom: focus on bus + the road ahead toward home
+    if (bus && routePath && routePath.length > 1) {
+      const bounds = L.latLngBounds(routePath.map(([lat, lng]) => [lat, lng]))
+      bounds.extend([bus.lat, bus.lng])
+      map.fitBounds(bounds.pad(0.28), { animate: true, maxZoom: 17 })
+      return
+    }
+
+    if (bus && fullPath && fullPath.length > 1) {
+      const windowPts = localRouteWindow(fullPath, bus)
+      const bounds = L.latLngBounds(windowPts.map(([lat, lng]) => [lat, lng]))
+      bounds.extend([bus.lat, bus.lng])
+      // Include home only when already nearby on the map
+      const homeDist =
+        map.distance([bus.lat, bus.lng], [home.lat, home.lng])
+      if (homeDist < 2000) {
+        bounds.extend([home.lat, home.lng])
+      }
+      map.fitBounds(bounds.pad(0.35), { animate: true, maxZoom: 17 })
+      return
+    }
+
+    if (bus) {
       const bounds = L.latLngBounds(
         [home.lat, home.lng],
         [bus.lat, bus.lng],
       )
-      map.fitBounds(bounds.pad(0.35), { animate: true })
-    } else {
-      map.setView([home.lat, home.lng], 14, { animate: true })
+      map.fitBounds(bounds.pad(0.4), { animate: true, maxZoom: 16 })
+      return
     }
+
+    map.setView([home.lat, home.lng], 14, { animate: true })
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [key, map])
+  }, [key, map, viewMode])
 
   return null
 }
@@ -112,6 +186,8 @@ type MapViewProps = {
   approachDistanceM?: number
   arrivalDistanceM?: number
   homeIndex?: number
+  /** follow = auto-zoom to bus travel; complete = full route overview */
+  viewMode?: MapViewMode
   className?: string
 }
 
@@ -127,6 +203,7 @@ export function MapView({
   approachDistanceM = DEFAULT_APPROACH_DISTANCE_M,
   arrivalDistanceM = DEFAULT_ARRIVAL_DISTANCE_M,
   homeIndex = -1,
+  viewMode = 'follow',
   className = '',
 }: MapViewProps) {
   const liveLine = useMemo(() => {
@@ -172,6 +249,7 @@ export function MapView({
           bus={bus}
           routePath={routePath}
           savedRoutePath={savedRoutePath}
+          viewMode={viewMode}
         />
         <ClickPicker enabled={pickable} onPick={(pos) => onPick?.(pos)} />
         {showZones && (

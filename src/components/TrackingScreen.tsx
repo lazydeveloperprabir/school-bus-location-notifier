@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { MapView } from './MapView'
+import { MapView, type MapViewMode } from './MapView'
 import {
   playApproachingUpdate,
   playArrivedAlarm,
@@ -75,6 +75,7 @@ export function TrackingScreen({
   })
   const [recording, setRecording] = useState(recordRoute)
   const [trailVersion, setTrailVersion] = useState(0)
+  const [mapViewMode, setMapViewMode] = useState<MapViewMode>('follow')
   const demoBusRef = useRef<LatLng | null>(null)
   const lastBusRef = useRef<LatLng | null>(null)
   const lastTimeRef = useRef<number>(Date.now())
@@ -421,24 +422,43 @@ export function TrackingScreen({
         </div>
       )}
 
-      <MapView
-        home={settings.home}
-        bus={stats.bus}
-        routePath={stats.routePath}
-        savedRoutePath={
-          savedRoutePath.length > 1
-            ? savedRoutePath
-            : activeRoute.length > 1
-              ? routeToLatLngTuples(activeRoute)
-              : null
-        }
-        alarmPoints={tripAlarms}
-        homeIndex={homeIndex}
-        showZones
-        approachDistanceM={settings.approachDistanceM}
-        arrivalDistanceM={settings.arrivalDistanceM}
-        className="map-tracking"
-      />
+      <div className="map-with-controls">
+        <MapView
+          home={settings.home}
+          bus={stats.bus}
+          routePath={stats.routePath}
+          savedRoutePath={
+            savedRoutePath.length > 1
+              ? savedRoutePath
+              : activeRoute.length > 1
+                ? routeToLatLngTuples(activeRoute)
+                : null
+          }
+          alarmPoints={tripAlarms}
+          homeIndex={homeIndex}
+          showZones
+          approachDistanceM={settings.approachDistanceM}
+          arrivalDistanceM={settings.arrivalDistanceM}
+          viewMode={mapViewMode}
+          className="map-tracking"
+        />
+        <div className="map-view-toggle" role="group" aria-label="Map view">
+          <button
+            type="button"
+            className={`map-toggle-btn ${mapViewMode === 'follow' ? 'active' : ''}`}
+            onClick={() => setMapViewMode('follow')}
+          >
+            Follow bus
+          </button>
+          <button
+            type="button"
+            className={`map-toggle-btn ${mapViewMode === 'complete' ? 'active' : ''}`}
+            onClick={() => setMapViewMode('complete')}
+          >
+            Complete view
+          </button>
+        </div>
+      </div>
 
       <section className="stats-panel">
         <div className="stat">
