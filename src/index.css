@@ -432,6 +432,12 @@ input {
   position: relative;
 }
 
+.map-with-controls .map-tracking {
+  height: min(48vh, 420px);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+}
+
 .map-view-toggle {
   position: absolute;
   left: 50%;
