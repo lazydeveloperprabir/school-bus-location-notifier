@@ -128,6 +128,11 @@ export function normalizeAlarmPoints(points: unknown): AlarmPoint[] {
         typeof point.routeIndex === 'number'
       )
     })
+    .map((point) => {
+      const label =
+        typeof point.label === 'string' ? point.label.trim().slice(0, 40) : ''
+      return label ? { ...point, label } : { ...point, label: undefined }
+    })
     .slice(0, 50)
 }
 
@@ -143,4 +148,14 @@ export function getActiveRoute(settings: AppSettings): LatLng[] {
 
 export function createAlarmPointId(): string {
   return `ap-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`
+}
+
+/** Custom tag if set; otherwise "Alarm point 1", "Alarm point 2", … */
+export function getAlarmPointName(
+  point: Pick<AlarmPoint, 'label'>,
+  index: number,
+): string {
+  const custom = point.label?.trim()
+  if (custom) return custom
+  return `Alarm point ${index + 1}`
 }

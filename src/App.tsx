@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { SetupScreen } from './components/SetupScreen'
 import { TrackingScreen } from './components/TrackingScreen'
-import { unlockAudio } from './lib/alarms'
+import { startTrackingAudio, stopTrackingAudio } from './lib/alarms'
 import {
   clearSettingsAsync,
   describeStoredData,
@@ -69,7 +69,7 @@ export default function App() {
     nextMode: 'live' | 'demo',
     options?: { recordRoute?: boolean },
   ) {
-    await unlockAudio()
+    await startTrackingAudio()
     await persist(next)
     setMode(nextMode)
     setRecordRoute(Boolean(options?.recordRoute))
@@ -79,6 +79,7 @@ export default function App() {
   }
 
   function handleOpenSettings(options?: { placeAlarms?: boolean }) {
+    stopTrackingAudio({ reason: 'user' })
     setRecordRoute(false)
     setPlaceAlarmsOnOpen(Boolean(options?.placeAlarms))
     setSettingsMode(true)
@@ -90,6 +91,7 @@ export default function App() {
     setSettingsMode(false)
     setRecordRoute(false)
     setPlaceAlarmsOnOpen(false)
+    await startTrackingAudio()
     setView('tracking')
   }
 

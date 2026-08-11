@@ -265,10 +265,11 @@ export function SetupScreen({
         lat: snap.point.lat,
         lng: snap.point.lng,
         routeIndex: snap.routeIndex,
-        label: `Stop ${tripAlarms.length + 1}`,
       }
       setAlarmPoints((prev) => [...prev, point])
-      setHint(`Alarm point selected on ${activeTrip} route.`)
+      setHint(
+        `Alarm point #${tripAlarms.length + 1} added. Type a name below so voice can say it.`,
+      )
       setError(null)
       return
     }
@@ -288,6 +289,20 @@ export function SetupScreen({
 
   function removeAlarm(id: string) {
     setAlarmPoints((prev) => prev.filter((p) => p.id !== id))
+  }
+
+  function renameAlarm(id: string, label: string) {
+    const trimmed = label.slice(0, 40)
+    setAlarmPoints((prev) =>
+      prev.map((point) =>
+        point.id === id
+          ? {
+              ...point,
+              label: trimmed.trim() ? trimmed : undefined,
+            }
+          : point,
+      ),
+    )
   }
 
   function goHome() {
@@ -457,10 +472,18 @@ export function SetupScreen({
           <ul className="alarm-list">
             {tripAlarms.map((point, index) => (
               <li key={point.id}>
-                <span>
-                  #{index + 1} · {point.label ?? 'Alarm'} · route #
-                  {point.routeIndex}
-                </span>
+                <div className="alarm-list-main">
+                  <span className="alarm-list-index">#{index + 1}</span>
+                  <input
+                    className="alarm-label-input"
+                    type="text"
+                    maxLength={40}
+                    placeholder={`Alarm point ${index + 1}`}
+                    value={point.label ?? ''}
+                    onChange={(e) => renameAlarm(point.id, e.target.value)}
+                    aria-label={`Name for alarm point ${index + 1}`}
+                  />
+                </div>
                 <button
                   type="button"
                   className="btn btn-ghost"
@@ -471,6 +494,12 @@ export function SetupScreen({
               </li>
             ))}
           </ul>
+        )}
+        {tripAlarms.length > 0 && (
+          <p className="panel-hint">
+            Name each point (e.g. Temple Road). Voice says that name; leave
+            blank to hear “Alarm point 1”, “Alarm point 2”, etc.
+          </p>
         )}
       </section>
 

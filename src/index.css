@@ -314,11 +314,43 @@ input {
   font-size: 0.88rem;
 }
 
+.alarm-list-main {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  flex: 1;
+  min-width: 0;
+}
+
+.alarm-list-index {
+  flex-shrink: 0;
+  font-weight: 700;
+  color: var(--brand);
+}
+
+.alarm-label-input {
+  width: 100%;
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 0.4rem 0.55rem;
+  font: inherit;
+  background: #fff;
+  color: var(--brand);
+}
+
+.alarm-label-input::placeholder {
+  color: var(--muted);
+  opacity: 0.85;
+}
+
 .map-pin-alarm span {
   background: #c45c26;
   color: #fff;
   font-size: 0.75rem;
   font-weight: 700;
+  white-space: nowrap;
+  padding: 0 0.35rem;
 }
 
 
@@ -548,6 +580,18 @@ input {
   justify-content: space-between;
   gap: 1rem;
   color: #fffdf8;
+}
+
+.track-bar-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  flex-shrink: 0;
+}
+
+.btn-mute.is-muted {
+  background: rgba(255, 196, 120, 0.25);
+  color: #ffe6c2;
 }
 
 .stats-panel {

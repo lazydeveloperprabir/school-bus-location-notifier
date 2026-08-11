@@ -13,6 +13,7 @@ import type { AlarmPoint, LatLng } from '../types'
 import {
   DEFAULT_APPROACH_DISTANCE_M,
   DEFAULT_ARRIVAL_DISTANCE_M,
+  getAlarmPointName,
 } from '../types'
 import 'leaflet/dist/leaflet.css'
 
@@ -32,11 +33,21 @@ const busIcon = L.divIcon({
   iconAnchor: [20, 20],
 })
 
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+}
+
 function alarmIcon(label: string) {
+  const short =
+    label.length > 8 ? `${label.slice(0, 7)}…` : label
   return L.divIcon({
     className: 'map-pin map-pin-alarm',
-    html: `<span aria-hidden="true">${label}</span>`,
-    iconSize: [28, 28],
+    html: `<span aria-hidden="true">${escapeHtml(short)}</span>`,
+    iconSize: [Math.min(28 + short.length * 4, 72), 28],
     iconAnchor: [14, 14],
   })
 }
@@ -314,7 +325,7 @@ export function MapView({
           <Marker
             key={point.id}
             position={[point.lat, point.lng]}
-            icon={alarmIcon(String(index + 1))}
+            icon={alarmIcon(getAlarmPointName(point, index))}
           />
         ))}
       </MapContainer>

@@ -5,7 +5,11 @@ import {
   playArrivedAlarm,
   playEnRouteStatusOnce,
   playWaypointAlarm,
-  resetAlarms,
+  startTrackingAudio,
+  stopTrackingAudio,
+  subscribeMute,
+  toggleMute,
+  isTrackingAudioActive,
 } from '../lib/alarms'
 import { distanceKm, formatDistance, moveToward, offsetByKm } from '../lib/geo'
 import { fetchBusLocation } from '../lib/gpsLink'
@@ -28,6 +32,7 @@ import {
   DEFAULT_WAYPOINT_RADIUS_M,
   formatAlertDistance,
   getActiveRoute,
+  getAlarmPointName,
   metersToKm,
   POLL_INTERVAL_MS,
 } from '../types'
@@ -85,6 +90,8 @@ export function TrackingScreen({
   const [recordingJustFinished, setRecordingJustFinished] = useState(false)
   const [trailVersion, setTrailVersion] = useState(0)
   const [mapViewMode, setMapViewMode] = useState<MapViewMode>('follow')
+  const [muted, setMutedUi] = useState(false)
+  const [alertsArmed, setAlertsArmed] = useState(isTrackingAudioActive())
   const demoBusRef = useRef<LatLng | null>(null)
   const lastBusRef = useRef<LatLng | null>(null)
   const lastTimeRef = useRef<number>(Date.now())
@@ -129,10 +136,18 @@ export function TrackingScreen({
   )
 
   useEffect(() => {
-    resetAlarms()
     alertRef.current = null
     approachDistanceRef.current = null
     triggeredWaypoints.current = new Set()
+    void startTrackingAudio().then(() => {
+      setAlertsArmed(true)
+      setMutedUi(false)
+    })
+    const unsub = subscribeMute((next) => setMutedUi(next))
+    return () => {
+      unsub()
+      stopTrackingAudio({ reason: 'user' })
+    }
   }, [])
 
   useEffect(() => {
@@ -300,9 +315,9 @@ export function TrackingScreen({
         const distM = distanceKm(bus, point) * 1000
         if (distM <= DEFAULT_WAYPOINT_RADIUS_M) {
           triggeredWaypoints.current.add(point.id)
-          waypointLabel = point.label ?? `Alarm ${i + 1}`
+          waypointLabel = getAlarmPointName(point, i)
           playWaypointAlarm({
-            label: String(i + 1),
+            name: waypointLabel,
             remainingDistanceM: distM,
           })
           break
@@ -410,6 +425,17 @@ export function TrackingScreen({
     setRecordingJustFinished(false)
   }
 
+  async function armAlerts() {
+    await startTrackingAudio()
+    setAlertsArmed(true)
+    setMutedUi(false)
+  }
+
+  function handleMuteToggle() {
+    const next = toggleMute()
+    setMutedUi(next)
+  }
+
   const alertClass =
     stats.alert === 'arrived'
       ? 'alert-arrived'
@@ -432,20 +458,48 @@ export function TrackingScreen({
               : stats.alert === 'approaching'
                 ? 'Bus approaching'
                 : stats.alert === 'waypoint'
-                  ? `Alarm point ${stats.activeWaypointLabel ?? ''}`
+                  ? stats.activeWaypointLabel ?? 'Alarm point'
                   : recording
                     ? `Recording ${settings.activeTrip}`
                     : 'Tracking bus'}
           </h1>
         </div>
+        <div className="track-bar-actions">
+          <button
+            type="button"
+            className={`btn btn-ghost btn-mute ${muted ? 'is-muted' : ''}`}
+            onClick={handleMuteToggle}
+            aria-pressed={muted}
+            aria-label={muted ? 'Unmute voice alerts' : 'Mute voice alerts'}
+            title={muted ? 'Unmute' : 'Mute'}
+          >
+            {muted ? 'Muted' : 'Sound'}
+          </button>
+          <button
+            type="button"
+            className="btn btn-ghost"
+            onClick={() => onChangeSettings()}
+          >
+            Settings
+          </button>
+        </div>
+      </header>
+
+      {!alertsArmed && (
         <button
           type="button"
-          className="btn btn-ghost"
-          onClick={() => onChangeSettings()}
+          className="banner banner-action"
+          onClick={() => void armAlerts()}
         >
-          Settings
+          Tap to enable voice alerts (needed for lock-screen notifications)
         </button>
-      </header>
+      )}
+
+      {muted && (
+        <div className="banner banner-warn" role="status">
+          Voice alerts are muted. Tap Sound to turn them back on.
+        </div>
+      )}
 
       {recording && (
         <div className="banner banner-info" role="status">
@@ -483,13 +537,14 @@ export function TrackingScreen({
       )}
       {stats.alert === 'waypoint' && (
         <div className="banner banner-warn" role="status">
-          Passed alarm point on the {settings.activeTrip} route.
+          Passed {stats.activeWaypointLabel ?? 'alarm point'} on the{' '}
+          {settings.activeTrip} route.
         </div>
       )}
-      {stats.alert === null && stats.bus && !recording && !recordingJustFinished && (
+      {stats.alert === null && stats.bus && !recording && !recordingJustFinished && !muted && (
         <div className="banner banner-info" role="status">
-          Tracking {settings.activeTrip}. Continuous alerts start within{' '}
-          {formatAlertDistance(settings.approachDistanceM)}.
+          Tracking {settings.activeTrip}. Alerts continue if the screen locks;
+          stop on arrival, Mute, or closing the app.
           {tripAlarms.length
             ? ` ${tripAlarms.length} route alarm point(s) armed.`
             : ''}
